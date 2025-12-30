@@ -1,9 +1,17 @@
 const mongoose = require('mongoose');
 
 const deviceSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: [true, 'Device name is required'],
+    trim: true,
+    maxlength: [100, 'Name cannot exceed 100 characters']
+  },
   phoneNumber: {
-    type: Number,
-    required: true,
+    type: String,
+    required: [true, 'Phone number is required'],
+    unique: true,
+    match: [/^\+?[1-9]\d{1,14}$/, 'Invalid phone number format']
   },
   area: {
     areaType: {
@@ -13,15 +21,20 @@ const deviceSchema = new mongoose.Schema({
     center: {
       latitude: {
         type: Number,
-        required: true
+        required: true,
+        min: -90,
+        max: 90
       },
       longitude: {
         type: Number,
-        required: true
+        required: true,
+        min: -180,
+        max: 180
       },
       radius: {
         type: Number,
-        required: true
+        required: true,
+        min: 0
       }
     },
     civicAddress: {
@@ -29,9 +42,21 @@ const deviceSchema = new mongoose.Schema({
       A1: String,
       A2: String
     }
+  },
+  status: {
+    type: String,
+    enum: ['active', 'inactive', 'maintenance'],
+    default: 'active'
+  },
+  lastSeen: {
+    type: Date,
+    default: Date.now
   }
+}, {
+  timestamps: true
 });
 
-const Device = mongoose.model('Device', deviceSchema);
+deviceSchema.index({ phoneNumber: 1 });
+deviceSchema.index({ status: 1 });
 
-module.exports = Device;
+module.exports = mongoose.model('Device', deviceSchema);

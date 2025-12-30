@@ -1,17 +1,21 @@
 const PORT = process.env.SERVER_PORT || 3000;
-var express = require('express'),
-  app = express(),
-  server = require('http').createServer(app),
-  path = require('path');
-mongoose = require('mongoose');
-sessions = require('express-session');
-const axios = require('axios');
+const express = require('express');
+const path = require('path');
+const sessions = require('express-session');
+const helmet = require('helmet');
+const connectDB = require('./config/database');
+const { errorHandler, notFound } = require('./middleware/errorHandler');
+const { apiLimiter, nokiaApiLimiter } = require('./middleware/rateLimiter');
 
-mongoose = require('mongoose');
-mongoose.connect(`mongodb://mongodb:27017/sdm`, (err, res) => {
-  if (err) console.log(`ERROR: connecting to Database ${err}`);
-  else console.log('Database Online');
-});
+const app = express();
+const server = require('http').createServer(app);
+
+// Connect to database
+connectDB();
+
+// Security middleware
+app.use(helmet());
+app.use(apiLimiter);
 
 // ImPORT routes of our app
 //var routes = require('./routes/main');
@@ -24,72 +28,84 @@ app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(
   sessions({
-    secret: 'thisismysecrctekeyfhrgfgrfrty84fwir767',
+    secret: process.env.SESSION_SECRET || 'thisismysecrctekeyfhrgfgrfrty84fwir767',
     resave: false,
     saveUninitialized: false,
   })
 );
 
+// Import routes
+const deviceRoutes = require('./routes/deviceRoutes');
+
+// Routes
 app.get('/', (req, res) => {
-  res.send('Hello, welcome to SportStream!');
+  res.json({ message: 'SportStream API v1.0', status: 'running' });
 });
 
-app.post('/api/location/retrieve', async (req, res) => {
-  console.log(req.body);
-  const options = {
-    method: 'POST',
-    url: 'https://location-retrieval.p-eu.rapidapi.com/retrieve',
-    headers: {
-      'content-type': 'application/json',
-      'X-RapidAPI-Key': '045a41f880msh934bba06750a7c5p137aadjsnd3cbc9a8e472',
-      'X-RapidAPI-Host': 'location-retrieval.nokia.rapidapi.com',
-    },
-    data: {
-      device: {
-        phoneNumber: '21431000030',
-      },
-      maxAge: '60',
-    },
-  };
+app.get('/health', (req, res) => {
+  res.json({ status: 'healthy', timestamp: new Date().toISOString() });
+});
 
+app.use('/api/devices', deviceRoutes);
+
+app.post('/api/location/retrieve', nokiaApiLimiter, async (req, res) => {
   try {
+    const { phoneNumber } = req.body;
+    if (!phoneNumber) {
+      return res.status(400).json({ error: 'Phone number required' });
+    }
+
+    const axios = require('axios');
+    const options = {
+      method: 'POST',
+      url: 'https://location-retrieval.p-eu.rapidapi.com/retrieve',
+      headers: {
+        'content-type': 'application/json',
+        'X-RapidAPI-Key': process.env.NOKIA_API_KEY || '045a41f880msh934bba06750a7c5p137aadjsnd3cbc9a8e472',
+        'X-RapidAPI-Host': 'location-retrieval.nokia.rapidapi.com',
+      },
+      data: {
+        device: { phoneNumber },
+        maxAge: '60',
+      },
+    };
+
     const response = await axios.request(options);
-    console.log('DATA', response.data);
+    res.json(response.data);
   } catch (error) {
-    console.error(error);
+    console.error('Location retrieval error:', error);
+    res.status(500).json({ error: 'Failed to retrieve location' });
   }
 });
 
 app.get('/api/event-subscription', async (req, res) => {
-  // Configuration for the external API request
-  const options = {
-    method: 'GET',
-    url: 'https://device-status.p-eu.rapidapi.com/event-subscriptions/045a41f880msh934bba06750a7c5p137aadjsnd3cbc9a8e472',
-    headers: {
-      'X-RapidAPI-Key': '4ed0e194d0mshff39531bdaec257p1136e1jsnd62933539b8d',
-      'X-RapidAPI-Host': 'device-status.nokia.rapidapi.com',
-    },
-  };
-
   try {
-    // Make the GET request to the external API
+    const axios = require('axios');
+    const options = {
+      method: 'GET',
+      url: 'https://device-status.p-eu.rapidapi.com/event-subscriptions/045a41f880msh934bba06750a7c5p137aadjsnd3cbc9a8e472',
+      headers: {
+        'X-RapidAPI-Key': process.env.NOKIA_API_KEY || '4ed0e194d0mshff39531bdaec257p1136e1jsnd62933539b8d',
+        'X-RapidAPI-Host': 'device-status.nokia.rapidapi.com',
+      },
+    };
+
     const response = await axios.request(options);
-    // Send the response from the external API to the client
     res.json(response.data);
   } catch (error) {
-    // Handle any errors that occur during the request
-    console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    console.error('Event subscription error:', error);
+    res.status(500).json({ error: 'Failed to get event subscription' });
   }
 });
 
-// Error handler middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).send('Something broke!');
-});
+// Error handling middleware
+app.use(notFound);
+app.use(errorHandler);
 
-server.listen(PORT, (err, res) => {
-  if (err) console.log(`ERROR: Connecting APP ${err}`);
-  else console.log(`Server is running on PORT ${PORT}`);
+server.listen(PORT, (err) => {
+  if (err) {
+    console.error(`ERROR: Starting server ${err}`);
+    process.exit(1);
+  }
+  console.log(`Server running on PORT ${PORT}`);
 });
