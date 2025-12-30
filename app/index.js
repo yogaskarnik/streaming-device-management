@@ -6,6 +6,7 @@ const helmet = require('helmet');
 const connectDB = require('./config/database');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 const { apiLimiter, nokiaApiLimiter } = require('./middleware/rateLimiter');
+const DeviceMonitor = require('./services/DeviceMonitor');
 
 const app = express();
 const server = require('http').createServer(app);
@@ -13,12 +14,16 @@ const server = require('http').createServer(app);
 // Connect to database
 connectDB();
 
+// Initialize real-time monitoring
+const deviceMonitor = new DeviceMonitor(server);
+
 // Security middleware
 app.use(helmet());
 app.use(apiLimiter);
 
 // ImPORT routes of our app
-//var routes = require('./routes/main');
+const deviceRoutes = require('./routes/deviceRoutes');
+const analyticsRoutes = require('./routes/analyticsRoutes');
 
 // view engine setup and other configurations
 app.set('views', path.join(__dirname, 'views'));
@@ -36,6 +41,7 @@ app.use(
 
 // Import routes
 const deviceRoutes = require('./routes/deviceRoutes');
+const analyticsRoutes = require('./routes/analyticsRoutes');
 
 // Routes
 app.get('/', (req, res) => {
@@ -47,6 +53,7 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/api/devices', deviceRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 app.post('/api/location/retrieve', nokiaApiLimiter, async (req, res) => {
   try {

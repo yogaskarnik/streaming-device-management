@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SportStream Analytics Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .metric { text-align: center; margin: 10px 0; }
+        .metric-value { font-size: 2em; font-weight: bold; color: #2196F3; }
+        .metric-label { color: #666; }
+        .status-online { color: #4CAF50; }
+        .status-offline { color: #f44336; }
+        .chart-container { height: 300px; }
+    </style>
+</head>
+<body>
+    <h1>SportStream Analytics Dashboard</h1>
+    
+    <div class="dashboard">
+        <div class="card">
+            <h3>Device Overview</h3>
+            <div class="metric">
+                <div class="metric-value" id="totalDevices">-</div>
+                <div class="metric-label">Total Devices</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value status-online" id="activeDevices">-</div>
+                <div class="metric-label">Active Devices</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="activePercentage">-%</div>
+                <div class="metric-label">Active Percentage</div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h3>Performance Metrics</h3>
+            <div class="metric">
+                <div class="metric-value" id="uptime">-%</div>
+                <div class="metric-label">System Uptime</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="responseTime">-ms</div>
+                <div class="metric-label">Avg Response Time</div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h3>Device Status Distribution</h3>
+            <div class="chart-container">
+                <canvas id="statusChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h3>24h Activity</h3>
+            <div class="chart-container">
+                <canvas id="activityChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let statusChart, activityChart;
+        
+        async function loadDashboard() {
+            try {
+                const [stats, performance, activity] = await Promise.all([
+                    fetch('/api/analytics/stats').then(r => r.json()),
+                    fetch('/api/analytics/performance').then(r => r.json()),
+                    fetch('/api/analytics/activity').then(r => r.json())
+                ]);
+                
+                updateMetrics(stats, performance);
+                updateStatusChart(stats);
+                updateActivityChart(activity);
+            } catch (error) {
+                console.error('Dashboard load error:', error);
+            }
+        }
+        
+        function updateMetrics(stats, performance) {
+            document.getElementById('totalDevices').textContent = stats.total;
+            document.getElementById('activeDevices').textContent = stats.active;
+            document.getElementById('activePercentage').textContent = stats.activePercentage + '%';
+            document.getElementById('uptime').textContent = performance.uptime + '%';
+            document.getElementById('responseTime').textContent = Math.round(performance.avgResponseTime) + 'ms';
+        }
+        
+        function updateStatusChart(stats) {
+            const ctx = document.getElementById('statusChart').getContext('2d');
+            
+            if (statusChart) statusChart.destroy();
+            
+            statusChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Active', 'Inactive', 'Maintenance'],
+                    datasets: [{
+                        data: [stats.active, stats.inactive, stats.maintenance],
+                        backgroundColor: ['#4CAF50', '#f44336', '#FF9800']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+        }
+        
+        function updateActivityChart(activity) {
+            const ctx = document.getElementById('activityChart').getContext('2d');
+            
+            if (activityChart) activityChart.destroy();
+            
+            const hours = Array.from({length: 24}, (_, i) => i);
+            const data = hours.map(hour => activity[hour] || 0);
+            
+            activityChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: hours.map(h => h + ':00'),
+                    datasets: [{
+                        label: 'Device Activity',
+                        data: data,
+                        borderColor: '#2196F3',
+                        backgroundColor: 'rgba(33, 150, 243, 0.1)',
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Load dashboard on page load
+        loadDashboard();
+        
+        // Refresh every 30 seconds
+        setInterval(loadDashboard, 30000);
+    </script>
+</body>
+</html>

@@ -1,6 +1,11 @@
 const mongoose = require('mongoose');
 
 const deviceSchema = new mongoose.Schema({
+  tenantId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Tenant',
+    required: true
+  },
   name: {
     type: String,
     required: [true, 'Device name is required'],
@@ -10,7 +15,6 @@ const deviceSchema = new mongoose.Schema({
   phoneNumber: {
     type: String,
     required: [true, 'Phone number is required'],
-    unique: true,
     match: [/^\+?[1-9]\d{1,14}$/, 'Invalid phone number format']
   },
   area: {
@@ -56,7 +60,7 @@ const deviceSchema = new mongoose.Schema({
   timestamps: true
 });
 
-deviceSchema.index({ phoneNumber: 1 });
-deviceSchema.index({ status: 1 });
+deviceSchema.index({ tenantId: 1, phoneNumber: 1 }, { unique: true });
+deviceSchema.index({ tenantId: 1, status: 1 });
 
 module.exports = mongoose.model('Device', deviceSchema);
